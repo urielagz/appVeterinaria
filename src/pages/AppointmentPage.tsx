@@ -1,15 +1,33 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AppointmentCard } from "../components/AppointmentCard";
+import { NewAppointmentForm } from "../components/NewAppointmentForm";
 import { StatCard } from "../components/StatCard";
-import { citasIniciales } from "../data/citas";
-import type { EstadoCita } from "../types";
+import { actualizarEstado, obtenerCitas } from "../services/citasApi";
+import type { Cita, EstadoCita } from "../types";
 
 type Filtro = "todas" | EstadoCita;
 
+// Mismo orden que usa el backend: por fecha y luego por hora
+function ordenar(citas: Cita[]): Cita[] {
+  return [...citas].sort((a, b) =>
+    `${a.fecha} ${a.hora}`.localeCompare(`${b.fecha} ${b.hora}`),
+  );
+}
+
 export function AppointmentsPage() {
-  const [citas, setCitas] = useState(citasIniciales);
+  const [citas, setCitas] = useState<Cita[]>([]);
   const [filtro, setFiltro] = useState<Filtro>("todas");
   const [mensaje, setMensaje] = useState("");
+  const [error, setError] = useState("");
+  const [cargando, setCargando] = useState(true);
+  const [mostrarFormulario, setMostrarFormulario] = useState(false);
+
+  useEffect(() => {
+    obtenerCitas()
+      .then(setCitas)
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setCargando(false));
+  }, []);
 
   const citasFiltradas =
     filtro === "todas" ? citas : citas.filter((cita) => cita.estado === filtro);
@@ -17,13 +35,27 @@ export function AppointmentsPage() {
   const pendientes = citas.filter((c) => c.estado === "solicitada").length;
   const confirmadas = citas.filter((c) => c.estado === "confirmada").length;
 
-  function confirmarCita(id: number) {
-    setCitas(
-      citas.map((cita) =>
-        cita.id === id ? { ...cita, estado: "confirmada" } : cita,
-      ),
-    );
-    setMensaje("La cita fue confirmada correctamente.");
+  async function confirmarCita(id: number) {
+    setError("");
+    setMensaje("");
+    try {
+      const actualizada = await actualizarEstado(id, "confirmada");
+      setCitas((prev) =>
+        prev.map((cita) => (cita.id === id ? actualizada : cita)),
+      );
+      setMensaje("La cita fue confirmada correctamente.");
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  // La cita ya se guardó en la BD; aquí solo la agregamos a la lista en pantalla
+  function agregarCita(cita: Cita) {
+    setCitas((prev) => ordenar([...prev, cita]));
+    setMostrarFormulario(false);
+    setFiltro("todas");
+    setError("");
+    setMensaje(`La cita de ${cita.mascota} fue registrada correctamente.`);
   }
 
   return (
@@ -35,10 +67,24 @@ export function AppointmentsPage() {
             Consulta y administra las citas del día.
           </p>
         </div>
-        <button className="rounded-xl bg-teal-700 px-5 py-3 font-semibold text-white hover:bg-teal-800">
+        <button
+          onClick={() => {
+            setMostrarFormulario(true);
+            setMensaje("");
+          }}
+          disabled={mostrarFormulario}
+          className="rounded-xl bg-teal-700 px-5 py-3 font-semibold text-white hover:bg-teal-800 disabled:opacity-60"
+        >
           + Nueva cita
         </button>
       </section>
+
+      {mostrarFormulario && (
+        <NewAppointmentForm
+          onCreada={agregarCita}
+          onCancelar={() => setMostrarFormulario(false)}
+        />
+      )}
 
       <section className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
@@ -75,6 +121,8 @@ export function AppointmentsPage() {
           <option value="solicitada">Solicitadas</option>
           <option value="confirmada">Confirmadas</option>
           <option value="atendida">Atendidas</option>
+          <option value="rechazada">Rechazadas</option>
+          <option value="cancelada">Canceladas</option>
         </select>
       </section>
 
@@ -87,8 +135,21 @@ export function AppointmentsPage() {
         </p>
       )}
 
+      {error && (
+        <p
+          role="alert"
+          className="mt-6 rounded-xl bg-red-100 px-4 py-3 text-red-800"
+        >
+          {error}
+        </p>
+      )}
+
       <section className="mt-6 grid gap-4">
-        {citasFiltradas.length > 0 ? (
+        {cargando ? (
+          <p className="rounded-2xl bg-white p-8 text-center text-slate-500">
+            Cargando citas...
+          </p>
+        ) : citasFiltradas.length > 0 ? (
           citasFiltradas.map((cita) => (
             <AppointmentCard
               key={cita.id}

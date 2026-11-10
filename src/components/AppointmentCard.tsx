@@ -13,7 +13,7 @@ export function AppointmentCard({ cita, onConfirmar }: Props) {
             <StatusBadge estado={cita.estado} />
           </div>
           <p className="mt-2 text-sm text-slate-600">Cliente: {cita.cliente}</p>
-          <p className="text-sm text-slate-600">{cita.servicio} · {cita.hora}</p>
+          <p className="text-sm text-slate-600">{cita.servicio} · {cita.fecha} · {cita.hora}</p>
         </div>
 
         {cita.estado === 'solicitada' && (
